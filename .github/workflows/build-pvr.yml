@@ -1,6 +1,9 @@
 name: Build PPSSPPSDL_TrimUI
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ppsspp_version:
@@ -26,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Ensure beta release exists
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -89,7 +93,15 @@ jobs:
             ${{ env.IMAGE }}:latest
 
       - name: Upload binary
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "beta-${{ github.ref_name }}" output/PPSSPPSDL_TrimUI --clobber
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PPSSPPSDL_TrimUI
+          path: output/PPSSPPSDL_TrimUI
+          if-no-files-found: error

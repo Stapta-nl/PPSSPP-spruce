@@ -1,6 +1,9 @@
 name: Build PPSSPPSDL_SmartProS
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ppsspp_version:
@@ -26,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Ensure beta release exists
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -87,7 +91,15 @@ jobs:
             ${{ env.IMAGE }}:latest
 
       - name: Upload binary and assets
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "beta-${{ github.ref_name }}" output/PPSSPPSDL_SmartProS --clobber
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PPSSPPSDL_SmartProS
+          path: output/PPSSPPSDL_SmartProS
+          if-no-files-found: error
