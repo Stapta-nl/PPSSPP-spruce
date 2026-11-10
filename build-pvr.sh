@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-PPSSPP_VERSION="${PPSSPP_VERSION:-v1.20.3}"
+PPSSPP_VERSION="${PPSSPP_VERSION:-save-on-exit-v1.20.3}"
+# PPSSPP v1.20.3 plus the "Save state on exit" setting (Stapta-nl/ppsspp#2).
+PPSSPP_REPO="${PPSSPP_REPO:-https://github.com/Stapta-nl/ppsspp.git}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
 
 echo "=== Building PPSSPP ${PPSSPP_VERSION} for Brick/TSP (A133 / PowerVR GE8300) ==="
@@ -10,7 +12,7 @@ echo "=== Building PPSSPP ${PPSSPP_VERSION} for Brick/TSP (A133 / PowerVR GE8300
 if [ ! -d "ppsspp" ]; then
     git clone --depth 1 --branch "$PPSSPP_VERSION" \
         --recurse-submodules --shallow-submodules \
-        https://github.com/hrydgard/ppsspp.git
+        "$PPSSPP_REPO"
 fi
 
 cd ppsspp
