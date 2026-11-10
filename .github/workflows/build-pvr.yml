@@ -1,23 +1,23 @@
 name: Build PPSSPPSDL_TrimUI
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       ppsspp_version:
-        description: 'PPSSPP version tag'
-        default: 'v1.20.3'
+        description: 'PPSSPP ref (branch or tag) in PPSSPP_REPO'
+        default: 'save-on-exit-v1.20.3'
   workflow_call:
     inputs:
       ppsspp_version:
         type: string
-        default: 'v1.20.3'
+        default: 'save-on-exit-v1.20.3'
 
 permissions:
   contents: write
   packages: write
-
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/ppsspp-builder-pvr
 
 jobs:
   build:
@@ -25,7 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set image name (GHCR requires lowercase)
+        run: echo "IMAGE=ghcr.io/${OWNER,,}/ppsspp-builder-pvr" >> "$GITHUB_ENV"
+        env:
+          OWNER: ${{ github.repository_owner }}
+
       - name: Ensure beta release exists
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -74,22 +80,30 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ccache
-          key: ccache-pvr-${{ github.event.inputs.ppsspp_version || 'v1.20.3' }}-${{ github.sha }}
+          key: ccache-pvr-${{ github.event.inputs.ppsspp_version || 'save-on-exit-v1.20.3' }}-${{ github.sha }}
           restore-keys: |
-            ccache-pvr-${{ github.event.inputs.ppsspp_version || 'v1.20.3' }}-
+            ccache-pvr-${{ github.event.inputs.ppsspp_version || 'save-on-exit-v1.20.3' }}-
             ccache-pvr-
 
       - name: Build PPSSPP
         run: |
           mkdir -p output ccache
           docker run --rm \
-            -e PPSSPP_VERSION=${{ github.event.inputs.ppsspp_version || 'v1.20.3' }} \
+            -e PPSSPP_VERSION=${{ github.event.inputs.ppsspp_version || 'save-on-exit-v1.20.3' }} \
             -v ${{ github.workspace }}/output:/output \
             -v ${{ github.workspace }}/ccache:/ccache \
             ${{ env.IMAGE }}:latest
 
       - name: Upload binary
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "beta-${{ github.ref_name }}" output/PPSSPPSDL_TrimUI --clobber
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PPSSPPSDL_TrimUI
+          path: output/PPSSPPSDL_TrimUI
+          if-no-files-found: error

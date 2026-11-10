@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       ppsspp_version:
-        description: 'PPSSPP version tag'
-        default: 'v1.20.3'
+        description: 'PPSSPP ref (branch or tag) in PPSSPP_REPO'
+        default: 'save-on-exit-v1.20.3'
 
 permissions:
   contents: write

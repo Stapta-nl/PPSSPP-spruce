@@ -40,4 +40,6 @@ The PVR and TSPS builds require proprietary vendor SDKs stored in the [`sdk-tool
 
 ## PPSSPP version
 
-All builds currently target **v1.20.3**. To change, pass `ppsspp_version` when triggering the workflow (e.g., `v1.21.0`).
+All builds currently target PPSSPP **v1.20.3** with the "Save state on exit" setting added: branch `save-on-exit-v1.20.3` of [Stapta-nl/ppsspp](https://github.com/Stapta-nl/ppsspp) (see [Stapta-nl/ppsspp#2](https://github.com/Stapta-nl/ppsspp/pull/2)). When it's on (per game, next to "Auto load savestate"), every way of ending a game first saves a state: the Exit hotkey, the pause menu's Exit, "Exit to menu", and SIGTERM or window close (at most 5 s). The slot follows the auto-load setting, so the next start resumes there.
+
+The build scripts clone `PPSSPP_REPO` (default `https://github.com/Stapta-nl/ppsspp.git`) at `PPSSPP_VERSION` (default `save-on-exit-v1.20.3`). To build another ref, pass `ppsspp_version` when triggering the workflow. To build stock upstream, set `PPSSPP_REPO=https://github.com/hrydgard/ppsspp.git` and `PPSSPP_VERSION=v1.20.3` for the build script.

@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-PPSSPP_VERSION="${PPSSPP_VERSION:-d357e6a32934800d3d80b49f910a603e1b069751}"
+PPSSPP_VERSION="${PPSSPP_VERSION:-save-on-exit-v1.20.3}"
+# PPSSPP v1.20.3 plus the "Save state on exit" setting (Stapta-nl/ppsspp#2).
+PPSSPP_REPO="${PPSSPP_REPO:-https://github.com/Stapta-nl/ppsspp.git}"
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
 
 echo "=== Building PPSSPP for Pixel2 (RK3326 / Mali-G52, aarch64 native) ==="
@@ -10,7 +12,7 @@ echo "=== Ref: ${PPSSPP_VERSION} ==="
 # Clone PPSSPP with submodules
 if [ ! -d "ppsspp" ]; then
     git clone --recurse-submodules --shallow-submodules \
-        https://github.com/hrydgard/ppsspp.git
+        "$PPSSPP_REPO"
     cd ppsspp
     git checkout "$PPSSPP_VERSION"
     git submodule update --recursive
