@@ -1,6 +1,6 @@
 # Handoff: save a state on SIGTERM for NextUI auto-resume
 
-Status: **design and evidence only, no patch written yet.** A fresh session should be able to implement the patch from this file alone. Tracking PR in the pak repo: <https://github.com/Stapta-nl/minui-psp/pull/6> (see its "Notes" comment).
+Status: **patch written** (`patches/common/sigterm-autoresume-save.py`, check script `tools/test-autoresume-patch.sh`). Verified off-device on x86_64 Linux: applies to a fresh v1.20.3 checkout together with the other common patches (second run is a no-op, a missing anchor exits 1); the full `PPSSPPSDL` target (SDL 2.30, GL) compiled and linked; run under Xvfb with software GL on `pspautotests/demos/cube.iso`, SIGTERM produced `<path>` (705 KB, header `v1.20.3`, title "Cube sample") plus `<path>.done` and exited with status 0 in about 0.6 s; without the variable, and in the menus with it set, no files are written and the exit is the same; a failing save writes no `.done` and (rename failure) `<path>.fail`, with `.tmp` removed; stale `.done`/`.fail` are cleared. **Not verified:** loading the written state back with `--state`, the 8 s timeout path, the hardcore/netplay refusal, the Vulkan (message pump) loop (compiled, not run: no Vulkan driver here), the pause menu case, SIGINT, any ARM/TrimUI build, any device. Not yet run on a device. The sections below are the original specification; "Implementation notes and answers" at the end records what v1.20.3 actually offers. Tracking PR in the pak repo: <https://github.com/Stapta-nl/minui-psp/pull/6> (see its "Notes" comment).
 
 ## Goal
 
@@ -61,7 +61,7 @@ NextUI-20261013-0, TinaLinux 4.9.191, `procd` as init, PPSSPP v1.20.3, SDL 2.30.
 
 ## Test plan
 
-Off-device (headless build works in the cloud; the SDL build needs SDL3 there):
+Off-device (the SDL2 build and an Xvfb run work in the cloud; see the status line for what was actually run):
 1. Patch applies cleanly to `v1.20.3` (`python3 patches/common/sigterm-autoresume-save.py` in a checkout).
 2. With the env var set: start a game, send SIGTERM, check `<path>` and `<path>.done` exist, the `.ppst` loads with `--state`, and the process exits with the status it had before.
 3. Without the env var: SIGTERM behaves exactly as before (no files).
@@ -81,3 +81,30 @@ On-device (TrimUI Smart Pro), with the pak's shim in place:
 - Whether the thumbnail path for a path-based save is derived from the state path, and whether it should be written at all for the autoresume file.
 - Whether to use an env var or a command-line flag (`--autoresume-state=`) for upstream.
 - Which tree builds first, this patch or Stapta-nl/ppsspp#1, and where the shared wait logic lives.
+
+## Implementation notes and answers (v1.20.3)
+
+The patch is `patches/common/sigterm-autoresume-save.py`; `tools/test-autoresume-patch.sh <fresh checkout>` re-runs the apply and anchor checks. It edits only `SDL/SDLMain.cpp`: an include, about 50 lines of helpers, the `SDL_QUIT` case, and one `PollAutoResumeSave()` call in each of the two main loops (Vulkan message pump and GL main-thread loop). The literal `PPSSPP_AUTORESUME_STATE` is in the binary as a string literal.
+
+How it works: `SDL_QUIT` calls `StartAutoResumeSave()`. If the variable is unset or no game is running (`PSP_IsInited()` and `UISTATE_INGAME`/`UISTATE_PAUSEMENU`) it returns false and `g_QuitRequested` is set as before. Otherwise it deletes stale `<path>.done`/`.fail`, calls `SaveState::Save(<path>.tmp, -1, callback)` and sets an 8 s deadline. The callback only stores an atomic result. The main loop polls it (the Vulkan loop wakes at least every 100 ms), renames `.tmp` to `<path>`, creates `<path>.done`, then sets `g_QuitRequested`; on failure or timeout it removes `.tmp`, creates `<path>.fail` and quits anyway. A second SIGTERM while waiting is ignored (the timeout bounds the wait). The exit status is unchanged because only the moment of `g_QuitRequested` moves. No file work happens in the signal handler (SDL's handler only queues `SDL_QUIT`). Slot files and `iCurrentStateSlot` are not touched: `Save()` is called with slot `-1`, which is only used for the on-screen message.
+
+### Open questions, resolved
+
+- **Names in v1.20.3.** `SaveState::Save(const Path &, int slot, Callback)` exists (`Core/SaveState.h`), callback type `std::function<void(Status, std::string_view)>`. **There is no `IsBusy()` and no `IsSaveStateScreenshotPending()`** in v1.20.3; those are only in master / Stapta-nl/ppsspp#1. The patch does not need them.
+- **Completion signal.** `SaveState::Process()` runs on the emulation thread (from `EmuScreen::RunEmulation`, or `Core_ProcessStepping`) and calls the callback right after `CChunkFileReader::Save()` has returned, so the callback is a real "state file written" signal. `Save()` does not fsync; the pak's `sync` covers that.
+- **Thumbnail.** Only `SaveSlot()` schedules a screenshot (`ScheduleSaveScreenshot`); the path-based `Save()` does not. So the autoresume file has no thumbnail and there is nothing to wait for. The thumbnail race described under "Why not quit in the save callback" cannot happen here. If the pak's Game Switcher needs a preview, it has to come from elsewhere (for example the newest slot thumbnail), or a later change can call `ScheduleScreenshot()` with a callback and wait on that.
+- **Env var or flag.** An environment variable was implemented, as the pak already exports one. For upstream a `--autoresume-state=` flag would be a small addition next to `--state=`; not done.
+- **Which tree first.** The patch does not depend on Stapta-nl/ppsspp#1: it touches only `SDL/SDLMain.cpp` and uses no function from that PR. It will not conflict with `UI/EmuScreen.cpp` edits. If #1 lands, its `ExitWhenSaved()` does not cover this path, which is why this patch has its own wait.
+
+### Limits
+
+- If the save is refused (RetroAchievements hardcore mode without the save-in-hardcore setting, netplay), `SaveState::Save()` returns without ever calling the callback, so this shows up only as the 8 s timeout and then `.fail`. Power-off is held for that long.
+- The save runs on the emulation thread's next frame. If the game is hung or the emulation thread is stopped, the timeout applies and `.fail` is written.
+- `rename` is atomic on the same filesystem, but nothing is fsynced here; a power cut before the pak's `sync` can lose or truncate the file. `.done` is written after the rename, never before.
+- Window close and SIGINT take the same path as SIGTERM. SIGKILL and power cuts cannot be handled.
+- The timeout is a compile-time constant (8 s).
+- Applies to every target whose build script loops over `patches/common/*.py` (see below); only compile-checked on x86_64 Linux SDL2.
+
+### Which builds apply it
+
+No build script change was needed: `build-pvr.sh` (the Brick/TSP/Smart Pro binary `PPSSPPSDL_TrimUI`), `build-tsps.sh`, `build-64.sh`, `build-a30.sh`, `build-flip.sh`, `build-h700.sh`, `build-rgb30.sh` and `build-pixel2.sh` all run every `patches/common/*.py`, and all build the `PPSSPPSDL` target, so all pick it up. None skips it. The pixel2 build uses a pinned master commit (`d357e6a`), not v1.20.3; the patch applies to that commit's `SDL/SDLMain.cpp` (checked by applying only, not compiled) and its `SaveState::Save` has the same signature.
