@@ -19,14 +19,16 @@ permissions:
   contents: write
   packages: write
 
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/ppsspp-builder-tsps
-
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image name (GHCR requires lowercase)
+        run: echo "IMAGE=ghcr.io/${OWNER,,}/ppsspp-builder-tsps" >> "$GITHUB_ENV"
+        env:
+          OWNER: ${{ github.repository_owner }}
 
       - name: Ensure beta release exists
         if: github.event_name != 'pull_request' && github.event_name != 'push'
